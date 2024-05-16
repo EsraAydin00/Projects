@@ -25,83 +25,21 @@ ORDER BY DaysTakenForShipping DESC
 how many of them came back again in the each one months of 2011.
 */
 
-SELECT COUNT(DISTINCT Cust_ID) 
-FROM dbo.e_commerce_data
-WHERE Order_Date BETWEEN '2011-01-01' AND '2011-01-31'
+WITH T1 AS (
+			SELECT	Cust_ID
+			FROM	e_commerce_data
+			WHERE	YEAR(Order_Date) = 2011
+			AND		MONTH (Order_Date) = 1
+) 
+SELECT	MONTH (ORDER_DATE) as ord_month, COUNT(DISTINCT A.Cust_ID) cnt_cust
+FROM	e_commerce_data AS A
+		INNER JOIN
+		T1 AS B
+		ON A.Cust_ID = B.Cust_ID
+WHERE	YEAR(Order_Date) = 2011
+GROUP BY 
+		MONTH(Order_Date)
 
-
-WITH CustomerReturns AS (
-    SELECT
-        Cust_ID,
-        CASE
-            WHEN MONTH(Order_Date) = 1 AND YEAR(Order_Date) = 2011 THEN 1
-            ELSE 0
-        END AS JanuaryVisit,
-        CASE
-            WHEN MONTH(Order_Date) = 2 AND YEAR(Order_Date) = 2011 THEN 1
-            ELSE 0
-        END AS FebruaryReturn,
-        CASE
-            WHEN MONTH(Order_Date) = 3 AND YEAR(Order_Date) = 2011 THEN 1
-            ELSE 0
-        END AS MarchReturn,
-		CASE
-            WHEN MONTH(Order_Date) = 4 AND YEAR(Order_Date) = 2011 THEN 1
-            ELSE 0
-        END AS AprilReturn,
-		CASE
-            WHEN MONTH(Order_Date) = 5 AND YEAR(Order_Date) = 2011 THEN 1
-            ELSE 0
-        END AS MayReturn,
-		CASE
-            WHEN MONTH(Order_Date) = 6 AND YEAR(Order_Date) = 2011 THEN 1
-            ELSE 0
-        END AS JuneReturn,
-		CASE
-            WHEN MONTH(Order_Date) = 7 AND YEAR(Order_Date) = 2011 THEN 1
-            ELSE 0
-        END AS JulyReturn,
-		CASE
-            WHEN MONTH(Order_Date) = 8 AND YEAR(Order_Date) = 2011 THEN 1
-            ELSE 0
-        END AS AugustReturn,
-		CASE
-            WHEN MONTH(Order_Date) = 9 AND YEAR(Order_Date) = 2011 THEN 1
-            ELSE 0
-        END AS SeptemberReturn,
-		CASE
-            WHEN MONTH(Order_Date) = 10 AND YEAR(Order_Date) = 2011 THEN 1
-            ELSE 0
-        END AS OctoberReturn,
-		CASE
-            WHEN MONTH(Order_Date) = 11 AND YEAR(Order_Date) = 2011 THEN 1
-            ELSE 0
-        END AS NovemberReturn,
-		CASE
-            WHEN MONTH(Order_Date) = 12 AND YEAR(Order_Date) = 2011 THEN 1
-            ELSE 0
-        END AS DecemberReturn
-   
-    FROM
-        dbo.e_commerce_data
-    WHERE
-        YEAR(Order_Date) = 2011
-)
-SELECT
-    COUNT(DISTINCT CASE WHEN JanuaryVisit = 1 THEN Cust_ID END) AS TotalCustomersInJanuary,
-    SUM(FebruaryReturn) AS FebruaryReturnCount,
-    SUM(MarchReturn) AS MarchReturnCount,
-    SUM(AprilReturn) AS AprilReturnCount,
-	SUM(MayReturn) AS MayhReturnCount,
-	SUM(JuneReturn) AS JuneReturnCount,
-	SUM(JulyReturn) AS JulyReturnCount,
-	SUM(AugustReturn) AS AugustReturnCount,
-	SUM(SeptemberReturn) AS SeptemberReturnCount,
-	SUM(OctoberReturn) AS OctoberReturnCount,
-	SUM(NovemberReturn) AS NovemberReturnCount,
-	SUM(DecemberReturn) AS DecemberReturnCount
-FROM
-    CustomerReturns;
 
 /*
 4. Write a query to return for each user the time elapsed between the first purchasing and the third purchasing, 
@@ -110,7 +48,7 @@ in ascending order by Customer ID.
 
 WITH CustomerPurchases AS (
 SELECT Cust_ID,Ord_ID,order_date,
-		ROW_NUMBER() OVER (PARTITION BY Cust_ID ORDER BY order_date) AS PurchaseNumber
+		DENSE_RANK() OVER (PARTITION BY Cust_ID ORDER BY order_date) AS PurchaseNumber
 FROM dbo.e_commerce_data
 )
 SELECT
@@ -131,25 +69,19 @@ as well as the ratio of these products to the total number of products purchased
 */
 
 WITH T1 AS (
-SELECT DISTINCT Cust_ID, Customer_Name,	
-	SUM(CASE Prod_ID WHEN 'Prod_11' THEN 1 END) AS Prod_11,
-	SUM(CASE Prod_ID WHEN 'Prod_14' THEN 1 END) AS Prod_14
+SELECT DISTINCT Cust_ID,	
+	SUM(Order_Quantity) as total_orders,
+	SUM(CASE Prod_ID WHEN 'Prod_11' THEN Order_Quantity ELSE 0 END) AS Prod_11,
+	SUM(CASE Prod_ID WHEN 'Prod_14' THEN Order_Quantity ELSE 0 END) AS Prod_14
 FROM dbo.e_commerce_data
 GROUP BY Cust_ID, Customer_Name
 HAVING SUM(CASE Prod_ID WHEN 'Prod_11' THEN 1 END)  IS NOT NULL
 AND
 	   SUM(CASE Prod_ID WHEN 'Prod_14' THEN 1 END) IS NOT NULL
-),
-T2 AS (
-SELECT Cust_ID, COUNT(Ord_ID) AS total_order
-FROM dbo.e_commerce_data
-GROUP BY Cust_ID
 )
-SELECT T1.Cust_ID, (T1.Prod_11+T1.Prod_14) AS Purchases, T2.total_order, FORMAT(1.0*(T1.Prod_11+T1.Prod_14)/T2.total_order,'N2') AS Ratio
-FROM T1 
-	 INNER JOIN 
-	 T2 
-	 ON T1.Cust_ID = T2.Cust_ID
+SELECT *, CAST(1.0*Prod_11/total_orders AS decimal(3,2))  AS P_11_RATIO ,
+			CAST(1.0*Prod_14/total_orders AS DECIMAL(3,2))AS P_14_RATIO
+FROM T1
 
 
 
@@ -284,11 +216,11 @@ T4 AS (
 		GROUP BY Month, Year
 ),
 T5 AS (
-SELECT T3.Year, T3.Month, 
-	LAG(T3.Customer_Retained) OVER(ORDER BY T3.Year, T3.Month) AS Cust_Retained,
+SELECT T4.Year, T4.Month, 
+	LAG(T3.Customer_Retained) OVER(ORDER BY T4.Year, T4.Month) AS Cust_Retained,
 	T4.Total_Customer
 FROM T3 
-	INNER JOIN T4
+	RIGHT JOIN T4
 	ON T3.Month = T4.Month 
 	AND T3.Year = T4.Year
 
